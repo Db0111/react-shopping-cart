@@ -15741,7 +15741,7 @@ const CartPage = () => {
     navigate("/order");
   };
   return /* @__PURE__ */ jsxRuntimeExports.jsxs(jsxRuntimeExports.Fragment, { children: [
-    /* @__PURE__ */ jsxRuntimeExports.jsx(Header$1, { children: /* @__PURE__ */ jsxRuntimeExports.jsx(Logo, { href: "/", children: "SHOP" }) }),
+    /* @__PURE__ */ jsxRuntimeExports.jsx(Header$1, { children: /* @__PURE__ */ jsxRuntimeExports.jsx(Logo, { href: CLIENT_BASE_PATH, children: "SHOP" }) }),
     /* @__PURE__ */ jsxRuntimeExports.jsxs(Main$1, { children: [
       /* @__PURE__ */ jsxRuntimeExports.jsx(Title, { children: "장바구니" }),
       cartItemCount > 0 ? /* @__PURE__ */ jsxRuntimeExports.jsxs(ContentContainer, { children: [
@@ -15874,7 +15874,7 @@ const router = createBrowserRouter(
   }
 );
 async function enableMocking() {
-  const { worker } = await __vitePreload(() => import("./browser-CdB7H7F_.js"), true ? [] : void 0);
+  const { worker } = await __vitePreload(() => import("./browser-DEOtcLP8.js"), true ? [] : void 0);
   return worker.start({
     serviceWorker: {
       url: `${window.location.origin}${CLIENT_BASE_PATH}mockServiceWorker.js`,
