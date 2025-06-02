@@ -15115,14 +15115,26 @@ class HTTPClient {
       headers: this.getHeaders()
     });
     await this.handleHttpError(response);
-    return response.json();
+    const text = await response.text();
+    return text ? JSON.parse(text) : null;
   }
   setApiKey(apiKey) {
     this.apiKey = apiKey;
   }
 }
 const httpClient = new HTTPClient(API_BASE_URL, API_KEY);
-const ERROR_MESSAGE$2 = "징바구니를 가져오는 데 실패했습니다.";
+const ERROR_MESSAGE$2 = "장바구니에서 상품의 수량을 조절하던 중 에러가 발생했습니다.";
+const patchCartItem = async ({ cartId, quantity }) => {
+  try {
+    await httpClient.patch(`/cart-items/${cartId}`, {
+      id: cartId,
+      quantity
+    });
+  } catch (error) {
+    throw new Error(ERROR_MESSAGE$2);
+  }
+};
+const ERROR_MESSAGE$1 = "징바구니를 가져오는 데 실패했습니다.";
 const getCartItems = async () => {
   try {
     const url = new URLSearchParams({
@@ -15132,17 +15144,6 @@ const getCartItems = async () => {
     });
     const data = await httpClient.get(`/cart-items?${url.toString()}`);
     return data.content;
-  } catch (error) {
-    throw new Error(ERROR_MESSAGE$2);
-  }
-};
-const ERROR_MESSAGE$1 = "장바구니에서 상품의 수량을 조절하던 중 에러가 발생했습니다.";
-const patchCartItem = async ({ cartId, quantity }) => {
-  try {
-    await httpClient.patch(`/cart-items/${cartId}`, {
-      id: cartId,
-      quantity
-    });
   } catch (error) {
     throw new Error(ERROR_MESSAGE$1);
   }
@@ -15155,6 +15156,55 @@ const deleteCartItem = async (id2) => {
     throw new Error(ERROR_MESSAGE);
   }
 };
+const useCartAPI = ({
+  setCartItemsData,
+  setCartItemsCheckData,
+  setErrorMessage,
+  isCheckDataInitialized
+}) => {
+  const fetchData = reactExports.useCallback(async () => {
+    try {
+      const items = await getCartItems();
+      setCartItemsData(items);
+      if (!isCheckDataInitialized.current && items.length > 0) {
+        setCartItemsCheckData(items.map(({ id: id2 }) => ({ id: id2, checked: true })));
+        isCheckDataInitialized.current = true;
+      }
+    } catch (error) {
+      if (error instanceof Error)
+        setErrorMessage(error.message);
+    }
+  }, [setCartItemsData, setCartItemsCheckData]);
+  const deleteItem = async (cartId) => {
+    try {
+      await deleteCartItem(cartId);
+    } catch (error) {
+      if (error instanceof Error)
+        setErrorMessage(error.message);
+    }
+    await fetchData();
+    setCartItemsCheckData((prev2) => prev2.filter(({ id: id2 }) => id2 !== cartId));
+  };
+  const increaseItemQuantity = async (cartId, currentQuantity) => {
+    try {
+      await patchCartItem({ cartId, quantity: currentQuantity + 1 });
+    } catch (error) {
+      if (error instanceof Error)
+        setErrorMessage(error.message);
+    }
+    await fetchData();
+  };
+  const decreaseItemQuantity = async (cartId, currentQuantity) => {
+    try {
+      await patchCartItem({ cartId, quantity: currentQuantity - 1 });
+    } catch (error) {
+      if (error instanceof Error)
+        setErrorMessage(error.message);
+    }
+    await fetchData();
+  };
+  return { fetchData, deleteItem, increaseItemQuantity, decreaseItemQuantity };
+};
 const INITIAL_CHECKED = true;
 const CartContext = reactExports.createContext(null);
 const CartProvider = ({ children }) => {
@@ -15166,15 +15216,12 @@ const CartProvider = ({ children }) => {
     () => cartItemsCheckData.length > 0 && cartItemsCheckData.every(({ checked }) => checked),
     [cartItemsCheckData]
   );
-  const fetchData = reactExports.useCallback(async () => {
-    try {
-      setCartItemsData(await getCartItems());
-    } catch (error) {
-      if (error instanceof Error) {
-        setErrorMessage(error.message);
-      }
-    }
-  }, []);
+  const { fetchData, deleteItem, increaseItemQuantity, decreaseItemQuantity } = useCartAPI({
+    setCartItemsData,
+    setCartItemsCheckData,
+    setErrorMessage,
+    isCheckDataInitialized
+  });
   reactExports.useEffect(() => {
     fetchData();
   }, [fetchData]);
@@ -15188,52 +15235,6 @@ const CartProvider = ({ children }) => {
       isCheckDataInitialized.current = true;
     }
   }, [cartItemsData]);
-  const deleteItem = reactExports.useCallback(
-    async (cartId) => {
-      try {
-        await deleteCartItem(cartId);
-      } catch (error) {
-        if (error instanceof Error) {
-          setErrorMessage(error.message);
-        }
-      }
-      await fetchData();
-      setCartItemsCheckData((prev2) => prev2.filter(({ id: id2 }) => id2 !== cartId));
-    },
-    [fetchData]
-  );
-  const increaseItemQuantity = reactExports.useCallback(
-    async (cartId, currentQuantity) => {
-      try {
-        await patchCartItem({
-          cartId,
-          quantity: currentQuantity + 1
-        });
-      } catch (error) {
-        if (error instanceof Error) {
-          setErrorMessage(error.message);
-        }
-      }
-      await fetchData();
-    },
-    [fetchData]
-  );
-  const decreaseItemQuantity = reactExports.useCallback(
-    async (cartId, currentQuantity) => {
-      try {
-        await patchCartItem({
-          cartId,
-          quantity: currentQuantity - 1
-        });
-      } catch (error) {
-        if (error instanceof Error) {
-          setErrorMessage(error.message);
-        }
-      }
-      await fetchData();
-    },
-    [fetchData]
-  );
   const toggleAllChecked = () => {
     setCartItemsCheckData(
       (prev2) => prev2.map((item) => ({
@@ -15919,7 +15920,7 @@ const router = createBrowserRouter(
   }
 );
 async function enableMocking() {
-  const { worker } = await __vitePreload(() => import("./browser-Dhlt3NEE.js"), true ? [] : void 0);
+  const { worker } = await __vitePreload(() => import("./browser-BynJOsmw.js"), true ? [] : void 0);
   return worker.start({
     serviceWorker: {
       url: `${window.location.origin}${CLIENT_BASE_PATH}mockServiceWorker.js`,
