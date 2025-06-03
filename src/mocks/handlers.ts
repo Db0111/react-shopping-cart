@@ -3,6 +3,8 @@ import cartItems from "./cartItems.json";
 
 const END_POINT = "*/cart-items";
 
+//handler에 특정 path를 지정한 이유는 CartPage에서 직접 요청을 보낼 때 path만 변경하여 test 하기 위함
+
 export const handlers = [
   // 정상 응답
   http.get(END_POINT, async () => {
