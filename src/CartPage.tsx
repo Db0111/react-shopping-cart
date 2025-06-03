@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { ErrorUI } from "./components/ErrorUI";
 import { fetchCartItems } from "./fetchCartItems";
+import styled from "styled-components";
 
 type CartItemType = {
   id: number;
@@ -9,6 +10,7 @@ type CartItemType = {
     id: number;
     price: number;
     name: string;
+    imageUrl: string;
   };
 };
 
@@ -23,10 +25,7 @@ const CartPage = () => {
   useEffect(() => {
     const loadCartItems = async () => {
       try {
-        const result = await fetchCartItems(
-          "http://localhost:5173",
-          "/not-found"
-        );
+        const result = await fetchCartItems("http://localhost:5173");
         setCartItems(result.content);
         setError(null);
       } catch (err) {
@@ -60,16 +59,70 @@ const CartPage = () => {
 
   return (
     <>
-      <h1>react-shopping-cart</h1>
-      {cartItems.map((item: CartItemType) => (
-        <div key={item.id} className="cart-item">
-          <h2>{item.product.name}</h2>
-          <p>Price: {item.product.price}</p>
-          <p>Quantity: {item.quantity}</p>
-        </div>
-      ))}
+      <Container>
+        <Title>🛒 React Shopping Cart</Title>
+        {cartItems.map((item) => (
+          <CartItem key={item.id}>
+            <ProductImage src={item.product.imageUrl} alt={item.product.name} />
+            <ProductInfo>
+              <ProductName>{item.product.name}</ProductName>
+              <Price>Price: ₩{item.product.price.toLocaleString()}</Price>
+              <Quantity>Quantity: {item.quantity}</Quantity>
+            </ProductInfo>
+          </CartItem>
+        ))}
+      </Container>
     </>
   );
 };
 
 export default CartPage;
+
+const Container = styled.div`
+  padding: 2rem;
+  max-width: 800px;
+  margin: 0 auto;
+`;
+
+const Title = styled.h1`
+  text-align: center;
+  margin-bottom: 2rem;
+  font-size: 2rem;
+  font-weight: 700;
+`;
+
+const CartItem = styled.div`
+  display: flex;
+  align-items: center;
+  gap: 1.5rem;
+  border: 1px solid #ddd;
+  border-radius: 8px;
+  padding: 1rem;
+  margin-bottom: 1rem;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05);
+`;
+
+const ProductImage = styled.img`
+  width: 100px;
+  height: 100px;
+  object-fit: cover;
+  border-radius: 4px;
+`;
+
+const ProductInfo = styled.div`
+  flex: 1;
+`;
+
+const ProductName = styled.h2`
+  margin: 0;
+  font-size: 1.25rem;
+`;
+
+const Price = styled.p`
+  margin: 0.25rem 0;
+  color: #888;
+`;
+
+const Quantity = styled.p`
+  margin: 0.25rem 0;
+`;
