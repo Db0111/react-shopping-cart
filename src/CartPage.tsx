@@ -1,4 +1,6 @@
 import { useEffect, useState } from "react";
+import { ErrorUI } from "./components/ErrorUI";
+import { fetchCartItems } from "./fetchCartItems";
 
 type CartItemType = {
   id: number;
@@ -11,43 +13,54 @@ type CartItemType = {
 };
 
 const CartPage = () => {
-  const [cartItems, setCartItems] = useState([]);
+  const [cartItems, setCartItems] = useState<CartItemType[]>([]);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState("");
-
-  async function fetchCartItems() {
-    try {
-      const response = await fetch(
-        import.meta.env.VITE_API_BASE_URL + "/cart-items"
-      );
-      if (!response.ok) {
-        if (response.status === 404) {
-          setError("장바구니가 비어있습니다.");
-        } else {
-          setError(`에러가 발생했습니다: ${response.statusText}`);
-        }
-        return;
-      }
-      const data = await response.json();
-      setCartItems(data.content);
-    } catch (err) {
-      if (err instanceof Error) {
-        setError(err.message);
-      }
-    } finally {
-      setLoading(false);
-    }
-  }
+  const [error, setError] = useState<{
+    status?: number;
+    message?: string;
+  } | null>(null);
 
   useEffect(() => {
-    fetchCartItems();
+    const loadCartItems = async () => {
+      try {
+        const result = await fetchCartItems(
+          "http://localhost:5173",
+          "/not-found"
+        );
+        setCartItems(result.content);
+        setError(null);
+      } catch (err) {
+        if (err instanceof Error) {
+          // HTTP Error: 404와 같은 형식의 메시지에서 status 추출
+          const statusMatch = err.message.match(/HTTP Error: (\d+)/);
+          const status = statusMatch ? parseInt(statusMatch[1]) : undefined;
+
+          setError({
+            status,
+            message:
+              err.message.replace(/HTTP Error: \d+/, "").trim() ||
+              "알 수 없는 오류가 발생했습니다.",
+          });
+        }
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    loadCartItems();
   }, []);
+
+  if (loading) {
+    return <p>Loading...</p>;
+  }
+
+  if (error) {
+    return <ErrorUI status={error.status} message={error.message} />;
+  }
 
   return (
     <>
       <h1>react-shopping-cart</h1>
-      {loading && <p>Loading...</p>}
-      {error && <p>Error: {error}</p>}
       {cartItems.map((item: CartItemType) => (
         <div key={item.id} className="cart-item">
           <h2>{item.product.name}</h2>
