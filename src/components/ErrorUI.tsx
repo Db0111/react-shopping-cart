@@ -1,3 +1,5 @@
+import styled from "styled-components";
+
 interface ErrorUIProps {
   status?: number;
   message?: string;
@@ -37,13 +39,65 @@ export function ErrorUI({ status, message }: ErrorUIProps) {
   };
 
   return (
-    <div className="error-ui" role="alert">
-      <div className="error-icon">{getErrorIcon()}</div>
-      <h2 className="error-title">{getErrorMessage()}</h2>
-      {message && <p className="error-detail">{message}</p>}
-      <button className="retry-button" onClick={() => window.location.reload()}>
+    <ErrorWrapper role="alert" className="error-ui">
+      <ErrorIcon className="error-icon">{getErrorIcon()}</ErrorIcon>
+      <ErrorTitle className="error-title">{getErrorMessage()}</ErrorTitle>
+      {message && <ErrorDetail className="error-detail">{message}</ErrorDetail>}
+      <RetryButton
+        className="retry-button"
+        onClick={() => window.location.reload()}
+      >
         새로고침
-      </button>
-    </div>
+      </RetryButton>
+    </ErrorWrapper>
   );
 }
+
+const ErrorWrapper = styled.div`
+  max-width: 400px;
+  margin: 4rem auto;
+  padding: 2rem;
+  border: 1px solid #f44336;
+  border-radius: 8px;
+  background-color: #ffe6e6;
+  text-align: center;
+  box-shadow: 0 4px 10px rgba(244, 67, 54, 0.2);
+`;
+
+const ErrorIcon = styled.div`
+  font-size: 3rem;
+  margin-bottom: 1rem;
+`;
+
+const ErrorTitle = styled.h2`
+  margin: 0 0 1rem;
+  color: #b71c1c;
+  font-weight: 700;
+`;
+
+const ErrorDetail = styled.p`
+  color: #7f0000;
+  margin-bottom: 1.5rem;
+  font-size: 0.95rem;
+  white-space: pre-line;
+`;
+
+const RetryButton = styled.button`
+  background-color: #f44336;
+  color: white;
+  border: none;
+  padding: 0.6rem 1.2rem;
+  border-radius: 4px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background-color 0.3s ease;
+
+  &:hover {
+    background-color: #d32f2f;
+  }
+
+  &:focus {
+    outline: 2px solid #b71c1c;
+    outline-offset: 2px;
+  }
+`;
