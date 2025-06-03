@@ -30,7 +30,6 @@ const CartPage = () => {
         setError(null);
       } catch (err) {
         if (err instanceof Error) {
-          // HTTP Error: 404와 같은 형식의 메시지에서 status 추출
           const statusMatch = err.message.match(/HTTP Error: (\d+)/);
           const status = statusMatch ? parseInt(statusMatch[1]) : undefined;
 

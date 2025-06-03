@@ -1,11 +1,9 @@
-// src/utils/getApiKey.ts
 export const getApiKey = (): string => {
   // Vite 환경일 때만 import.meta.env 사용
   if (typeof process !== "undefined" && process.env.VITE_API_KEY) {
     return process.env.VITE_API_KEY;
   }
 
-  // fallback
   return "test";
 };
 
