@@ -15533,79 +15533,61 @@ const getCurrentTime = () => {
     currentHour: hours
   };
 };
-const isExpired = (expirationDate, currentTime) => {
-  const { currentYear, currentMonth, currentDate } = currentTime;
-  const [yearStr, monthStr, dayStr] = expirationDate.split("-");
-  const year = Number(yearStr);
-  const month = Number(monthStr);
-  const day = Number(dayStr);
-  if (year < currentYear)
-    return true;
-  if (year === currentYear && month < currentMonth)
-    return true;
-  if (year === currentYear && month === currentMonth && day < currentDate)
-    return true;
-  return false;
+const isExpired = (expirationDate, now) => {
+  return new Date(expirationDate) < now;
 };
-const isMorningTime = (availableTime, currentHour) => {
+const isValidTime = (availableTime, currentHour) => {
+  if (!availableTime)
+    return true;
   const [startHour] = availableTime.start.split(":").map(Number);
   const [endHour] = availableTime.end.split(":").map(Number);
   return currentHour >= startHour && currentHour < endHour;
 };
-const isMoreThanMinimumAmount = (minimumAmount, orderPrice) => {
+const isValidMinAmount = (minimumAmount, orderPrice) => {
   if (!minimumAmount)
     return true;
   return minimumAmount <= orderPrice;
 };
-const isFreeShippingAvailable = (coupon, orderPrice) => {
+const isValidFreeShipping = (coupon, orderPrice) => {
   if (coupon.discountType !== "freeShipping")
     return false;
-  const { minimumAmount } = coupon;
-  return minimumAmount ? orderPrice >= minimumAmount : true;
+  return isValidMinAmount(coupon.minimumAmount, orderPrice);
 };
-const isCouponAvailable = (cartItemsCheckData, coupon, orderPrice) => {
-  const {
-    expirationDate,
-    availableTime,
-    discountType,
-    buyQuantity,
-    getQuantity
-  } = coupon;
-  const { currentYear, currentMonth, currentDate, currentHour } = getCurrentTime();
-  const notExpired = !isExpired(expirationDate, {
-    currentYear,
-    currentMonth,
-    currentDate
-  });
-  if (!notExpired)
+const isValidBuyXGetY = (coupon, cartItemsCheckData) => {
+  const { buyQuantity, getQuantity } = coupon;
+  if (!buyQuantity || !getQuantity)
     return false;
+  return cartItemsCheckData.some(
+    (item) => item.quantity === buyQuantity + getQuantity
+  );
+};
+const isValidDiscountType = (coupon, orderPrice, cartItemsCheckData) => {
+  const { discountType } = coupon;
   switch (discountType) {
     case "fixed":
     case "percentage":
-      if (coupon.minimumAmount !== void 0 && !isMoreThanMinimumAmount(Number(coupon.minimumAmount), orderPrice)) {
-        return false;
-      }
-      break;
+      return isValidMinAmount(coupon.minimumAmount, orderPrice);
     case "freeShipping":
-      if (!isFreeShippingAvailable(coupon, orderPrice))
-        return false;
-      break;
-    case "buyXgetY": {
-      if (!buyQuantity || !getQuantity)
-        return false;
-      const hasEligibleItems = cartItemsCheckData.some(
-        (item) => item.quantity === buyQuantity + getQuantity
-      );
-      if (!hasEligibleItems)
-        return false;
-      break;
-    }
+      return isValidFreeShipping(coupon, orderPrice);
+    case "buyXgetY":
+      return isValidBuyXGetY(coupon, cartItemsCheckData);
     default:
       return false;
   }
-  if (availableTime && !isMorningTime(availableTime, currentHour)) {
+};
+const isFreeShippingAvailable = (coupon, orderPrice) => {
+  return isValidFreeShipping(coupon, orderPrice);
+};
+const isCouponAvailable = (cartItemsCheckData, coupon, orderPrice) => {
+  const { expirationDate, availableTime } = coupon;
+  const { currentHour } = getCurrentTime();
+  const now = /* @__PURE__ */ new Date();
+  if (isExpired(expirationDate, now))
     return false;
-  }
+  if (!isValidTime(availableTime, currentHour))
+    return false;
+  if (!isValidDiscountType(coupon, orderPrice, cartItemsCheckData))
+    return false;
   return true;
 };
 const getBuyXGetYDiscount = (coupon, cartItems) => {
@@ -15624,8 +15606,22 @@ const getBuyXGetYDiscount = (coupon, cartItems) => {
   const discount = getQuantity * mostExpensiveItem.price;
   return discount;
 };
+const getDiscountAmount = (coupon, currentPrice, cartItemsCheckData, shippingFee) => {
+  switch (coupon.discountType) {
+    case "fixed":
+      return coupon.discount || 0;
+    case "percentage":
+      return currentPrice * (coupon.discount || 0) / 100;
+    case "buyXgetY":
+      return getBuyXGetYDiscount(coupon, cartItemsCheckData);
+    case "freeShipping":
+      return isFreeShippingAvailable(coupon, currentPrice) ? shippingFee : 0;
+    default:
+      return 0;
+  }
+};
 const useCoupons = () => {
-  const [coupons, setCoupons] = reactExports.useState([]);
+  const coupons = reactExports.useRef([]);
   const [couponsWithAvailability, setCouponsWithAvailability] = reactExports.useState([]);
   const { orderPrice, shippingFee } = useCartCalculations();
   const { cartItemsCheckData } = useCart();
@@ -15633,57 +15629,52 @@ const useCoupons = () => {
     const fetchCoupons = async () => {
       try {
         const couponsData = await getCoupons();
-        setCoupons(couponsData);
+        coupons.current = couponsData;
+        const updatedCoupons = couponsData.map((coupon) => ({
+          ...coupon,
+          isAvailable: isCouponAvailable(
+            cartItemsCheckData,
+            coupon,
+            orderPrice
+          )
+        }));
+        setCouponsWithAvailability(updatedCoupons);
       } catch (error) {
         console.error("Failed to fetch coupons:", error);
       }
     };
     fetchCoupons();
-  }, []);
-  reactExports.useEffect(() => {
-    const updatedCoupons = coupons.map((coupon) => ({
-      ...coupon,
-      isAvailable: isCouponAvailable(cartItemsCheckData, coupon, orderPrice)
-    }));
-    setCouponsWithAvailability(updatedCoupons);
-  }, [coupons, orderPrice]);
-  const getDiscountAmount = reactExports.useCallback(
-    (coupon, currentPrice) => {
-      switch (coupon.discountType) {
-        case "fixed":
-          return coupon.discount || 0;
-        case "percentage":
-          return currentPrice * (coupon.discount || 0) / 100;
-        case "buyXgetY":
-          return getBuyXGetYDiscount(coupon, cartItemsCheckData);
-        case "freeShipping":
-          return isFreeShippingAvailable(coupon, currentPrice) ? shippingFee : 0;
-        default:
-          return 0;
-      }
-    },
-    [cartItemsCheckData, shippingFee]
-  );
+  }, [orderPrice, cartItemsCheckData]);
   const getTotalCombinedDiscount = (coupon1, coupon2, orderPrice2) => {
-    const firstDiscount = getDiscountAmount(coupon1, orderPrice2);
+    const firstDiscount = getDiscountAmount(
+      coupon1,
+      orderPrice2,
+      cartItemsCheckData,
+      shippingFee
+    );
     const afterFirst = coupon1.discountType === "buyXgetY" ? orderPrice2 : orderPrice2 - firstDiscount;
-    const secondDiscount = getDiscountAmount(coupon2, afterFirst);
+    const secondDiscount = getDiscountAmount(
+      coupon2,
+      afterFirst,
+      cartItemsCheckData,
+      shippingFee
+    );
     return firstDiscount + secondDiscount;
   };
-  const getBestCouponCombination = (coupons2, orderPrice2) => {
+  const getBestCouponCombination = (couponsWithAvailability2, orderPrice2) => {
     let maxDiscount = 0;
     let bestCombination = [];
-    for (let i = 0; i < coupons2.length; i++) {
-      const coupon1 = coupons2[i];
+    for (let i = 0; i < couponsWithAvailability2.length; i++) {
+      const coupon1 = couponsWithAvailability2[i];
       const discount1 = coupon1.discountType === "fixed" ? coupon1.discount || 0 : coupon1.discountType === "percentage" ? orderPrice2 * (coupon1.discount || 0) / 100 : coupon1.discountType === "buyXgetY" ? getBuyXGetYDiscount(coupon1, cartItemsCheckData) : 0;
       if (discount1 > maxDiscount) {
         maxDiscount = discount1;
         bestCombination = [coupon1];
       }
-      for (let j = 0; j < coupons2.length; j++) {
+      for (let j = 0; j < couponsWithAvailability2.length; j++) {
         if (i === j)
           continue;
-        const coupon2 = coupons2[j];
+        const coupon2 = couponsWithAvailability2[j];
         const discountA = getTotalCombinedDiscount(
           coupon1,
           coupon2,
@@ -15713,7 +15704,7 @@ const useCoupons = () => {
     (selectedCoupons) => {
       if (selectedCoupons.length === 0) {
         const { bestCombination, maxDiscount } = getBestCouponCombination(
-          coupons,
+          couponsWithAvailability,
           orderPrice
         );
         return {
@@ -15754,7 +15745,12 @@ const useCoupons = () => {
         }
       } else {
         const coupon = selectedCoupons[0];
-        const discount = getDiscountAmount(coupon, orderPrice);
+        const discount = getDiscountAmount(
+          coupon,
+          orderPrice,
+          cartItemsCheckData,
+          shippingFee
+        );
         return {
           appliedCoupons: [coupon],
           totalDiscount: discount
@@ -15765,7 +15761,7 @@ const useCoupons = () => {
       orderPrice,
       cartItemsCheckData,
       getBestCouponCombination,
-      coupons,
+      couponsWithAvailability,
       shippingFee
     ]
   );
@@ -16292,7 +16288,7 @@ const ModalBackDrop = newStyled.div`
   background-color: rgba(0, 0, 0, 0.5);
   display: flex;
   justify-content: center;
-  align-items: ${(props) => props.position === "center" ? "center" : "flex-end"};
+  align-items: ${(props) => props.$position === "center" ? "center" : "flex-end"};
   z-index: 9998;
 `;
 const ModalContainer = newStyled.div`
@@ -16301,9 +16297,9 @@ const ModalContainer = newStyled.div`
   display: flex;
   flex-direction: column;
   width: ${(props) => {
-  if (props.position === "bottom")
+  if (props.$position === "bottom")
     return "500px";
-  switch (props.size) {
+  switch (props.$size) {
     case "small":
       return "320px";
     case "medium":
@@ -16347,7 +16343,7 @@ const ButtonWrap = newStyled.div`
 `;
 const StyledCloseButton = newStyled.button`
   width: ${(props) => {
-  switch (props.size) {
+  switch (props.$size) {
     case "small":
       return "80px";
     case "medium":
@@ -16370,7 +16366,7 @@ const StyledCloseButton = newStyled.button`
 `;
 const StyledConfirmButton = newStyled.button`
   width: ${(props) => {
-  switch (props.size) {
+  switch (props.$size) {
     case "small":
       return "80px";
     case "medium":
@@ -16393,11 +16389,11 @@ const StyledConfirmButton = newStyled.button`
 `;
 const Modal = ({ isOpen, children, position: position2, size = "medium" }) => {
   const modalRef = reactExports.useRef(null);
-  return isOpen ? /* @__PURE__ */ jsxRuntimeExports.jsx(ModalBackDrop, { position: position2, children: /* @__PURE__ */ jsxRuntimeExports.jsx(ModalContainer, { ref: modalRef, size, position: position2, children }) }) : null;
+  return isOpen ? /* @__PURE__ */ jsxRuntimeExports.jsx(ModalBackDrop, { $position: position2, children: /* @__PURE__ */ jsxRuntimeExports.jsx(ModalContainer, { ref: modalRef, $size: size, $position: position2, children }) }) : null;
 };
 const Title = ({ children }) => /* @__PURE__ */ jsxRuntimeExports.jsx(StyledTitle, { children });
 const Description = ({ children }) => /* @__PURE__ */ jsxRuntimeExports.jsx(StyledDescription, { children });
-const Input = () => /* @__PURE__ */ jsxRuntimeExports.jsx(StyledInput, {});
+const Input = ({ ...props }) => /* @__PURE__ */ jsxRuntimeExports.jsx(StyledInput, { ...props });
 const Actions = ({ children }) => /* @__PURE__ */ jsxRuntimeExports.jsx(ButtonWrap, { children });
 const ConfirmButton = ({ children, onClick }) => /* @__PURE__ */ jsxRuntimeExports.jsx(StyledConfirmButton, { onClick, children });
 const CloseButton$1 = ({ children, onClick }) => /* @__PURE__ */ jsxRuntimeExports.jsx(StyledCloseButton, { onClick, children });
@@ -16489,7 +16485,7 @@ const CouponModal = ({ isOpen, onClose }) => {
   return /* @__PURE__ */ jsxRuntimeExports.jsxs(Modal, { position: "center", isOpen, onClose, children: [
     /* @__PURE__ */ jsxRuntimeExports.jsxs(ModalHeader, { children: [
       /* @__PURE__ */ jsxRuntimeExports.jsx(Modal.Title, { children: "쿠폰을 선택해 주세요" }),
-      /* @__PURE__ */ jsxRuntimeExports.jsx(CloseButton, { onClick: onClose, children: /* @__PURE__ */ jsxRuntimeExports.jsx(CloseImage$1, { src: CloseImage, alt: "close" }) })
+      /* @__PURE__ */ jsxRuntimeExports.jsx(CloseButton, { "aria-label": "닫기", onClick: onClose, children: /* @__PURE__ */ jsxRuntimeExports.jsx(CloseImage$1, { src: CloseImage, alt: "close-icon" }) })
     ] }),
     /* @__PURE__ */ jsxRuntimeExports.jsx(
       InfoMessage,
@@ -16501,34 +16497,52 @@ const CouponModal = ({ isOpen, onClose }) => {
     ),
     /* @__PURE__ */ jsxRuntimeExports.jsx(CouponContainer, { children: coupons.map((coupon) => {
       const isSelected = selectedCoupons.some((c2) => c2.id === coupon.id);
-      return /* @__PURE__ */ jsxRuntimeExports.jsxs(CouponItem, { $disabled: !coupon.isAvailable, children: [
-        /* @__PURE__ */ jsxRuntimeExports.jsxs(LabelContainer, { children: [
-          /* @__PURE__ */ jsxRuntimeExports.jsx(
-            Checkbox,
-            {
-              checked: isSelected,
-              onClick: () => coupon.isAvailable && handleToggle(coupon)
-            }
-          ),
-          /* @__PURE__ */ jsxRuntimeExports.jsx(Label$1, { children: coupon.description })
-        ] }),
-        /* @__PURE__ */ jsxRuntimeExports.jsxs(Description$1, { children: [
-          "만료일: ",
-          coupon.expirationDate
-        ] }),
-        coupon.minimumAmount && /* @__PURE__ */ jsxRuntimeExports.jsxs(Description$1, { children: [
-          "최소 주문 금액: ",
-          coupon.minimumAmount.toLocaleString(),
-          "원"
-        ] }),
-        coupon.availableTime && /* @__PURE__ */ jsxRuntimeExports.jsxs(Description$1, { children: [
-          "사용 가능 시간: ",
-          coupon.availableTime.start,
-          " ~",
-          " ",
-          coupon.availableTime.end
-        ] })
-      ] }, coupon.id);
+      return /* @__PURE__ */ jsxRuntimeExports.jsxs(
+        CouponItem,
+        {
+          $disabled: !coupon.isAvailable,
+          "aria-disabled": !coupon.isAvailable,
+          tabIndex: !coupon.isAvailable ? -1 : 0,
+          children: [
+            /* @__PURE__ */ jsxRuntimeExports.jsxs(
+              LabelContainer,
+              {
+                as: "button",
+                "aria-pressed": isSelected,
+                onClick: () => coupon.isAvailable && handleToggle(coupon),
+                tabIndex: coupon.isAvailable ? 0 : -1,
+                children: [
+                  /* @__PURE__ */ jsxRuntimeExports.jsx(
+                    Checkbox,
+                    {
+                      checked: isSelected,
+                      onClick: () => coupon.isAvailable && handleToggle(coupon)
+                    }
+                  ),
+                  /* @__PURE__ */ jsxRuntimeExports.jsx(Label$1, { children: coupon.description })
+                ]
+              }
+            ),
+            /* @__PURE__ */ jsxRuntimeExports.jsxs(Description$1, { children: [
+              "만료일: ",
+              coupon.expirationDate
+            ] }),
+            coupon.minimumAmount && /* @__PURE__ */ jsxRuntimeExports.jsxs(Description$1, { children: [
+              "최소 주문 금액: ",
+              coupon.minimumAmount.toLocaleString(),
+              "원"
+            ] }),
+            coupon.availableTime && /* @__PURE__ */ jsxRuntimeExports.jsxs(Description$1, { children: [
+              "사용 가능 시간: ",
+              coupon.availableTime.start,
+              " ~",
+              " ",
+              coupon.availableTime.end
+            ] })
+          ]
+        },
+        coupon.id
+      );
     }) }),
     /* @__PURE__ */ jsxRuntimeExports.jsx(ButtonContainer, { children: /* @__PURE__ */ jsxRuntimeExports.jsxs(Button, { onClick: onClose, children: [
       "총 ",
@@ -16723,7 +16737,7 @@ const router = createBrowserRouter(
   }
 );
 async function enableMocking() {
-  const { worker } = await __vitePreload(() => import("./browser-Ba0p0g4l.js"), true ? [] : void 0);
+  const { worker } = await __vitePreload(() => import("./browser-BE6LXBjn.js"), true ? [] : void 0);
   return worker.start({
     serviceWorker: {
       url: `${window.location.origin}${CLIENT_BASE_PATH}mockServiceWorker.js`,
